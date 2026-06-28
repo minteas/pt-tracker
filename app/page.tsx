@@ -313,7 +313,13 @@ export default function TrackerPage() {
   };
 
   const doConsume = async (b: Booking, price: number) => {
-    const sessionDate = b.start_at.slice(0, 10); // UTC date — close enough for JST same-day
+    const sessionDate = toJSTDateStr(new Date(b.start_at));
+    // 即時反映：カードを消す＋月次集計を楽観的更新
+    setBookings(prev => prev.filter(bk => bk.id !== b.id));
+    setMonthly(prev => prev
+      ? { totalCount: prev.totalCount + 1, totalRevenue: prev.totalRevenue + price }
+      : prev
+    );
     const r = await fetch(`/api/bookings/${encodeURIComponent(b.id)}`, {
       method: "PATCH", headers: hdrs(),
       body: JSON.stringify({
@@ -324,11 +330,15 @@ export default function TrackerPage() {
         session_date:  sessionDate,
       }),
     });
-    if (r.ok) {
-      setBookings(prev => prev.map(bk =>
-        bk.id === b.id ? { ...bk, consumed: true, consumed_at: new Date().toISOString(), price } : bk
-      ));
-      fetchMonthly(ym);
+    if (!r.ok) {
+      // 失敗したら元に戻す
+      setBookings(prev => [...prev, { ...b, consumed: false }].sort((a, c) => a.start_at.localeCompare(c.start_at)));
+      setMonthly(prev => prev
+        ? { totalCount: prev.totalCount - 1, totalRevenue: prev.totalRevenue - price }
+        : prev
+      );
+    } else {
+      fetchMonthly(ym); // バックグラウンドで正確な値を取得
     }
   };
 
