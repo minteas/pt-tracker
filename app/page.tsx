@@ -328,6 +328,7 @@ export default function TrackerPage() {
         customer_name: b.customer_name,
         trainer:       b.trainer,
         session_date:  sessionDate,
+        start_at:      b.start_at,
       }),
     });
     if (!r.ok) {

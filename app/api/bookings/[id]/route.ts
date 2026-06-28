@@ -28,6 +28,7 @@ export async function PATCH(
     customer_name?: string;
     trainer?: string;
     session_date?: string;
+    start_at?: string;
   };
 
   const supabase = getSupabase();
@@ -40,6 +41,7 @@ export async function PATCH(
         customer_name: body.customer_name ?? "",
         trainer:       body.trainer ?? "",
         session_date:  body.session_date ?? new Date().toISOString().slice(0, 10),
+        start_at:      body.start_at ?? new Date().toISOString(),
         price:         typeof body.price === "number" ? body.price : null,
         consumed_at:   new Date().toISOString(),
       }, { onConflict: "event_uid" });
