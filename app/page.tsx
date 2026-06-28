@@ -8,7 +8,6 @@ import { ChevronLeft, ChevronRight, Check, RotateCcw, Lock } from "lucide-react"
 interface Booking {
   id: string;
   customer_name: string;
-  customer_memo: string | null;
   trainer: "GYM" | "GYM2";
   start_at: string;
   duration_minutes: number;
@@ -303,24 +302,31 @@ export default function TrackerPage() {
   // ── Consume logic ───────────────────────────────────────────────────────────
 
   const handleTap = (b: Booking) => {
-    if (b.consumed) return; // already consumed → handled by undo button
+    if (b.consumed) return;
     const known = b.price ?? prices[b.customer_name] ?? null;
     if (known === null) {
       setModal(b);
       setPriceInput("");
     } else {
-      doConsume(b.id, known);
+      doConsume(b, known);
     }
   };
 
-  const doConsume = async (id: string, price: number) => {
-    const r = await fetch(`/api/bookings/${id}`, {
+  const doConsume = async (b: Booking, price: number) => {
+    const sessionDate = b.start_at.slice(0, 10); // UTC date — close enough for JST same-day
+    const r = await fetch(`/api/bookings/${encodeURIComponent(b.id)}`, {
       method: "PATCH", headers: hdrs(),
-      body: JSON.stringify({ action: "consume", price }),
+      body: JSON.stringify({
+        action: "consume",
+        price,
+        customer_name: b.customer_name,
+        trainer:       b.trainer,
+        session_date:  sessionDate,
+      }),
     });
     if (r.ok) {
-      setBookings(prev => prev.map(b =>
-        b.id === id ? { ...b, consumed: true, consumed_at: new Date().toISOString(), price } : b
+      setBookings(prev => prev.map(bk =>
+        bk.id === b.id ? { ...bk, consumed: true, consumed_at: new Date().toISOString(), price } : bk
       ));
       fetchMonthly(ym);
     }
@@ -350,7 +356,7 @@ export default function TrackerPage() {
       body: JSON.stringify({ customer_name: modal.customer_name, price }),
     });
     setPrices(prev => ({ ...prev, [modal.customer_name]: price }));
-    await doConsume(modal.id, price);
+    await doConsume(modal, price);
     setSaving(false);
     setModal(null);
   };
@@ -415,7 +421,6 @@ export default function TrackerPage() {
                 <div style={S.cardName}>{b.customer_name}</div>
                 <div style={S.cardMeta}>
                   {fmtTime(b.start_at)}〜 ({b.duration_minutes}分)
-                  {b.customer_memo ? `　${b.customer_memo}` : ""}
                 </div>
                 {b.consumed && b.price != null && (
                   <div style={S.cardPrice}>{fmtPrice(b.price)}</div>

@@ -1,6 +1,6 @@
 /**
  * GET /api/monthly?ym=YYYY-MM
- * → 指定月（JST）の消化済み予約の件数・合計金額を返す
+ * → 指定月の consumed_sessions から消化数・合計金額を返す
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -24,21 +24,20 @@ export async function GET(req: NextRequest) {
   const nm = m === 12 ? 1 : m + 1;
   const ny = m === 12 ? y + 1 : y;
 
-  const from = new Date(`${ym}-01T00:00:00+09:00`).toISOString();
-  const to   = new Date(`${ny}-${String(nm).padStart(2, "0")}-01T00:00:00+09:00`).toISOString();
+  const from = `${ym}-01`;
+  const to   = `${ny}-${String(nm).padStart(2, "0")}-01`;
 
   const supabase = getSupabase();
   const { data, error } = await supabase
-    .from("bookings")
-    .select("price, customer_name, trainer")
-    .eq("consumed", true)
-    .gte("start_at", from)
-    .lt("start_at", to);
+    .from("consumed_sessions")
+    .select("price")
+    .gte("session_date", from)
+    .lt("session_date", to);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const totalCount   = (data ?? []).length;
-  const totalRevenue = (data ?? []).reduce((s, b) => s + (b.price ?? 0), 0);
+  const totalRevenue = (data ?? []).reduce((s, r) => s + (r.price ?? 0), 0);
 
   return NextResponse.json({ totalCount, totalRevenue });
 }
