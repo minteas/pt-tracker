@@ -10,6 +10,8 @@ import { getSupabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+const CALDAV_HOST = "https://caldav.icloud.com";
+
 function checkAuth(req: NextRequest): boolean {
   return req.headers.get("x-admin-password") === process.env.ADMIN_PASSWORD;
 }
@@ -25,11 +27,14 @@ export async function GET(req: NextRequest) {
   const from = new Date(`${date}T00:00:00+09:00`);
   const to   = new Date(`${date}T23:59:59+09:00`);
 
-  const gymUrl  = process.env.GYM_CALENDAR_URL;
-  const gym2Url = process.env.GYM2_CALENDAR_URL;
-  if (!gymUrl || !gym2Url) {
-    return NextResponse.json({ error: "GYM_CALENDAR_URL / GYM2_CALENDAR_URL not set" }, { status: 500 });
+  const gymPath  = process.env.CALENDAR_GYM_PATH;
+  const gym2Path = process.env.CALENDAR_GYM2_PATH;
+  if (!gymPath || !gym2Path) {
+    return NextResponse.json({ error: "CALENDAR_GYM_PATH / CALENDAR_GYM2_PATH not set" }, { status: 500 });
   }
+
+  const gymUrl  = `${CALDAV_HOST}${gymPath}`;
+  const gym2Url = `${CALDAV_HOST}${gym2Path}`;
 
   // iCloud から両カレンダーを並列取得
   const [gymEvents, gym2Events] = await Promise.all([
