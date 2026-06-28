@@ -302,7 +302,12 @@ export default function TrackerPage() {
   // ── Consume logic ───────────────────────────────────────────────────────────
 
   const handleTap = (b: Booking) => {
-    if (b.consumed) return;
+    if (b.consumed) {
+      // 消化済み → 単価編集モーダルを開く
+      setModal(b);
+      setPriceInput(b.price != null ? String(b.price) : "");
+      return;
+    }
     const known = b.price ?? prices[b.customer_name] ?? null;
     if (known === null) {
       setModal(b);
@@ -362,13 +367,36 @@ export default function TrackerPage() {
     const price = parseInt(priceInput.replace(/[^0-9]/g, ""), 10);
     if (isNaN(price) || price < 0) return;
     setSaving(true);
-    // Save to customer_prices for future bookings
-    await fetch("/api/prices", {
-      method: "POST", headers: hdrs(),
-      body: JSON.stringify({ customer_name: modal.customer_name, price }),
-    });
-    setPrices(prev => ({ ...prev, [modal.customer_name]: price }));
-    await doConsume(modal, price);
+
+    if (modal.consumed) {
+      // 単価編集：upsert で price だけ更新
+      const sessionDate = toJSTDateStr(new Date(modal.start_at));
+      const r = await fetch(`/api/bookings/${encodeURIComponent(modal.id)}`, {
+        method: "PATCH", headers: hdrs(),
+        body: JSON.stringify({
+          action: "consume",
+          price,
+          customer_name:    modal.customer_name,
+          trainer:          modal.trainer,
+          session_date:     sessionDate,
+          start_at:         modal.start_at,
+          duration_minutes: modal.duration_minutes,
+        }),
+      });
+      if (r.ok) {
+        setBookings(prev => prev.map(b => b.id === modal.id ? { ...b, price } : b));
+        fetchMonthly(ym);
+      }
+    } else {
+      // Save to customer_prices for future bookings
+      await fetch("/api/prices", {
+        method: "POST", headers: hdrs(),
+        body: JSON.stringify({ customer_name: modal.customer_name, price }),
+      });
+      setPrices(prev => ({ ...prev, [modal.customer_name]: price }));
+      await doConsume(modal, price);
+    }
+
     setSaving(false);
     setModal(null);
   };
@@ -440,7 +468,7 @@ export default function TrackerPage() {
               </div>
               <button
                 style={S.consumeBtn(b.consumed)}
-                onClick={() => !b.consumed && handleTap(b)}
+                onClick={() => handleTap(b)}
                 aria-label={b.consumed ? "消化済み" : "消化する"}
               >
                 <Check size={22} strokeWidth={3} />
@@ -524,7 +552,9 @@ export default function TrackerPage() {
         <div style={S.overlay} onClick={() => !saving && setModal(null)}>
           <div style={S.modal} onClick={e => e.stopPropagation()}>
             <div style={S.modalTitle}>{modal.customer_name}</div>
-            <div style={S.modalSub}>単価を入力してください（この顧客の初回）</div>
+            <div style={S.modalSub}>
+              {modal.consumed ? "単価を修正してください" : "単価を入力してください（この顧客の初回）"}
+            </div>
             <input
               type="number"
               inputMode="numeric"
