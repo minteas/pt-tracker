@@ -30,14 +30,23 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("consumed_sessions")
-    .select("price")
+    .select("price, trainer")
     .gte("session_date", from)
     .lt("session_date", to);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const totalCount   = (data ?? []).length;
-  const totalRevenue = (data ?? []).reduce((s, r) => s + (r.price ?? 0), 0);
+  const rows = data ?? [];
+  const totalCount   = rows.length;
+  const totalRevenue = rows.reduce((s, r) => s + (r.price ?? 0), 0);
 
-  return NextResponse.json({ totalCount, totalRevenue });
+  const byTrainer: Record<string, { count: number; revenue: number }> = {};
+  for (const row of rows) {
+    const t = row.trainer ?? "unknown";
+    if (!byTrainer[t]) byTrainer[t] = { count: 0, revenue: 0 };
+    byTrainer[t].count++;
+    byTrainer[t].revenue += row.price ?? 0;
+  }
+
+  return NextResponse.json({ totalCount, totalRevenue, byTrainer });
 }

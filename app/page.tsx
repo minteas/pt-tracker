@@ -120,10 +120,20 @@ const S = {
     padding: "2px 6px", fontSize: 18, lineHeight: 1,
   } as React.CSSProperties,
   summaryYM: { color: "#ccc", fontSize: 15, fontWeight: 600, flex: 1, textAlign: "center" as const },
-  summaryStats: { display: "flex", gap: 24 } as React.CSSProperties,
-  statItem: { textAlign: "center" as const } as React.CSSProperties,
-  statVal:  { color: GOLD, fontSize: 22, fontWeight: 700 },
-  statLbl:  { color: "#888", fontSize: 11, marginTop: 2 },
+  summaryStats: { width: "100%" } as React.CSSProperties,
+  statsRow: {
+    display: "flex", alignItems: "center", gap: 0, paddingTop: 5, paddingBottom: 5,
+  } as React.CSSProperties,
+  statsTotalRow: {
+    display: "flex", alignItems: "center", gap: 0,
+    borderTop: `1px solid ${GOLD}33`, marginTop: 5, paddingTop: 7,
+  } as React.CSSProperties,
+  statsLabel:    { color: "#888", fontSize: 13, width: 36 } as React.CSSProperties,
+  statsTotalLbl: { color: "#ccc", fontSize: 13, fontWeight: 700, width: 36 } as React.CSSProperties,
+  statsCount:    { color: GOLD, fontSize: 15, fontWeight: 600, width: 48, textAlign: "right" as const } as React.CSSProperties,
+  statsRevenue:  { color: GOLD, fontSize: 15, fontWeight: 600, flex: 1, textAlign: "right" as const } as React.CSSProperties,
+  statsTotalCount:   { color: GOLD, fontSize: 18, fontWeight: 700, width: 48, textAlign: "right" as const } as React.CSSProperties,
+  statsTotalRevenue: { color: GOLD, fontSize: 18, fontWeight: 700, flex: 1, textAlign: "right" as const } as React.CSSProperties,
 
   // Date nav
   dateNav: {
@@ -230,7 +240,11 @@ export default function TrackerPage() {
   const [ym,       setYm]       = useState(currentYM);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [prices,   setPrices]   = useState<Record<string, number>>({});
-  const [monthly,  setMonthly]  = useState<{ totalCount: number; totalRevenue: number } | null>(null);
+  const [monthly,  setMonthly]  = useState<{
+    totalCount: number;
+    totalRevenue: number;
+    byTrainer: Record<string, { count: number; revenue: number }>;
+  } | null>(null);
   const [dayLoad,  setDayLoad]  = useState(false);
 
   // Price modal
@@ -321,10 +335,16 @@ export default function TrackerPage() {
     const sessionDate = toJSTDateStr(new Date(b.start_at));
     // 即時反映：カードを消す＋月次集計を楽観的更新
     setBookings(prev => prev.filter(bk => bk.id !== b.id));
-    setMonthly(prev => prev
-      ? { totalCount: prev.totalCount + 1, totalRevenue: prev.totalRevenue + price }
-      : prev
-    );
+    setMonthly(prev => {
+      if (!prev) return prev;
+      const bt = prev.byTrainer ?? {};
+      const cur = bt[b.trainer] ?? { count: 0, revenue: 0 };
+      return {
+        totalCount: prev.totalCount + 1,
+        totalRevenue: prev.totalRevenue + price,
+        byTrainer: { ...bt, [b.trainer]: { count: cur.count + 1, revenue: cur.revenue + price } },
+      };
+    });
     const r = await fetch(`/api/bookings/${encodeURIComponent(b.id)}`, {
       method: "PATCH", headers: hdrs(),
       body: JSON.stringify({
@@ -340,10 +360,16 @@ export default function TrackerPage() {
     if (!r.ok) {
       // 失敗したら元に戻す
       setBookings(prev => [...prev, { ...b, consumed: false }].sort((a, c) => a.start_at.localeCompare(c.start_at)));
-      setMonthly(prev => prev
-        ? { totalCount: prev.totalCount - 1, totalRevenue: prev.totalRevenue - price }
-        : prev
-      );
+      setMonthly(prev => {
+        if (!prev) return prev;
+        const bt = prev.byTrainer ?? {};
+        const cur = bt[b.trainer] ?? { count: 1, revenue: price };
+        return {
+          totalCount: prev.totalCount - 1,
+          totalRevenue: prev.totalRevenue - price,
+          byTrainer: { ...bt, [b.trainer]: { count: Math.max(0, cur.count - 1), revenue: Math.max(0, cur.revenue - price) } },
+        };
+      });
     } else {
       fetchMonthly(ym); // バックグラウンドで正確な値を取得
     }
@@ -502,15 +528,25 @@ export default function TrackerPage() {
           <button style={S.summaryNav} onClick={() => setYm(y => addMonths(y, 1))}>›</button>
         </div>
         <div style={S.summaryStats}>
-          <div style={S.statItem}>
-            <div style={S.statVal}>{monthly?.totalCount ?? "—"}</div>
-            <div style={S.statLbl}>消化セッション</div>
-          </div>
-          <div style={S.statItem}>
-            <div style={S.statVal}>
+          {(["GYM", "GYM2"] as const).map(key => (
+            <div key={key} style={S.statsRow}>
+              <div style={S.statsLabel}>{TRAINER[key]}</div>
+              <div style={S.statsCount}>
+                {monthly?.byTrainer?.[key]?.count ?? 0}件
+              </div>
+              <div style={S.statsRevenue}>
+                {monthly?.byTrainer?.[key]?.revenue != null
+                  ? fmtPrice(monthly.byTrainer[key].revenue)
+                  : "¥0"}
+              </div>
+            </div>
+          ))}
+          <div style={S.statsTotalRow}>
+            <div style={S.statsTotalLbl}>合計</div>
+            <div style={S.statsTotalCount}>{monthly?.totalCount ?? "—"}件</div>
+            <div style={S.statsTotalRevenue}>
               {monthly?.totalRevenue != null ? fmtPrice(monthly.totalRevenue) : "—"}
             </div>
-            <div style={S.statLbl}>消化金額</div>
           </div>
         </div>
       </div>
