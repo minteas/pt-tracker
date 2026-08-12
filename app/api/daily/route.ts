@@ -37,9 +37,21 @@ export async function GET(req: NextRequest) {
   const gym2Url = `${CALDAV_HOST}${gym2Path}`;
 
   // iCloud から両カレンダーを並列取得
+  // 【変更点】エラーを黙って握りつぶさず、原因をログ＋レスポンスに残す
+  const calendarErrors: string[] = [];
   const [gymEvents, gym2Events] = await Promise.all([
-    fetchEvents(gymUrl,  from, to).catch(() => []),
-    fetchEvents(gym2Url, from, to).catch(() => []),
+    fetchEvents(gymUrl,  from, to).catch((e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[api/daily] GYM calendar fetch failed:", msg);
+      calendarErrors.push(`GYM: ${msg}`);
+      return [];
+    }),
+    fetchEvents(gym2Url, from, to).catch((e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[api/daily] GYM2 calendar fetch failed:", msg);
+      calendarErrors.push(`GYM2: ${msg}`);
+      return [];
+    }),
   ]);
 
   // consumed_sessions を取得して uid → record のマップを作る
@@ -78,5 +90,8 @@ export async function GET(req: NextRequest) {
     ...format(gym2Events, "GYM2"),
   ].sort((a, b) => a.start_at.localeCompare(b.start_at));
 
-  return NextResponse.json({ bookings });
+  return NextResponse.json({
+    bookings,
+    ...(calendarErrors.length > 0 ? { calendarError: calendarErrors.join(" / ") } : {}),
+  });
 }
